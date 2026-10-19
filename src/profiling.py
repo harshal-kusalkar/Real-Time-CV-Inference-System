@@ -1,49 +1,53 @@
 import time 
-from collections import deque
+import numpy as np 
+from collections import defaultdict
 
 
-class InferenceProfiler:
+class InferencePerformance:
+    pass 
 
-    def __init__(self, window_size: int = 100) -> None:
-        if window_size < 1:
-            raise ValueError("Window size mist be positive")
 
-        self.latencies_ms = deque(maxlen=window_size)
+class PerformanceMonitor:
 
-    def start(self) -> float:
-        """
-        Return a high-resolution start timestamp.
+    def __init__(self, report_interval=5) -> None:
+        self.report_interval = report_interval
+        self.latencies = defaultdict(list)
+        self.frame_count = 0
+        self.start_time = time.perf_counter()
+    
+    def record(self, name, elapsed_time):
+        self.latencies[name].append(elapsed_time)    
 
-        """
-        return time.perf_counter()
+    def next_frame(self):
+        self.frame_count += 1
+        elapsed = time.perf_counter() - self.start_time
 
-    def stop(self, start_time: float) -> float:
-        """
-        Record one duration and return its latency in milliseconds.
+        if elapsed >= self.report_interval:
+            self.report(elapsed)
 
-        """
+    def report(self, elapsed):
+        print(f"\n================ Performance Report =======================")
 
-        latency_ms = (time.perf_counter()-start_time)*1000
-        self.latencies_ms.append(latency_ms)
+        for name, value in self.latencies.items():
+            print(
+                f"{name}: "
+                f"mean: {np.mean(value):.2f} ms | "
+                f"p50: {np.percentile(value, 50):.2f} ms | "
+                f"p90: {np.percentile(value, 90):.3f} ms | "
+                f"p99: {np.percentile(value, 99):.3f} ms"
+            )
 
-        return latency_ms
 
-    @property
-    def average_latency_ms(self) -> float:
+        print(f"Pipeline FPS: {self.frame_count / elapsed:.2f}")
 
-        if not self.latencies_ms:
-            return 0.0 
+        self.latencies.clear()
+        self.frame_count = 0
+        self.start_time = time.perf_counter()
 
-        return sum(self.latencies_ms) / len(self.latencies_ms)
 
-    @property
-    def fps(self) -> float:
 
-        latency = self.average_latency_ms
 
-        if latency <= 1.0:
-            return 0.0 
 
-        return 1000.0 / latency
+
 
         
