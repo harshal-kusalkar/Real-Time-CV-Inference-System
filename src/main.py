@@ -4,6 +4,7 @@ import cv2
 
 import onnxruntime as ort
 
+import json
 from src.preprocessing import preprocess
 from src.postprocessing import postprocess
 
@@ -11,6 +12,17 @@ from src.postprocessing import postprocess
 MODEL_PATH = "models/yolo11n.onnx"
 IMAGE_SIZE = 640
 
+# load labels.json
+
+try:
+
+    with open("labels.json", "r") as f:
+        labels = json.load(f)
+
+    print(f"Labels loaded successfully. \n size: {len(labels)}")
+except:
+    raise FileNotFoundError()
+     
     
 def main():
 
@@ -62,7 +74,7 @@ def main():
             for idx in range(len(boxes)):
               x1, y1, x2, y2 = boxes[idx][0], boxes[idx][1], boxes[idx][2], boxes[idx][3]
               confidence = confidences[idx]
-              label = class_ids[idx]
+              label = labels[str(class_ids[idx])]
 
               cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
               cv2.putText(
