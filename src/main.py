@@ -1,141 +1,99 @@
 import time
+import numpy as np 
+import cv2 
 
-import cv2
-import numpy as np
+import onnxruntime as ort
 
-from src.config import WINDOW_NAME, CAMERA_INDEX
-from src.preprocessing import preprocess_frame
-from src.inference import InferenceEngine
+from src.preprocessing import preprocess
+from src.postprocessing import postprocess
 
 
-def main() -> None:
-    engine = InferenceEngine()
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+MODEL_PATH = "models/yolo11n.onnx"
+IMAGE_SIZE = 640
+
+    
+def main():
+
+    session = ort.InferenceSession(
+        MODEL_PATH, 
+        providers=["CPUExecutionProvider"],
+    )
+
+    input_name = session.get_inputs()[0].name 
+    output_name = session.get_outputs()[0].name
+
+    cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
-        raise RuntimeError("Could not open webcam.")
-
-    window_size = 100
-    counter = 0
-    SHOW_DISPLAY = False
-
-    stage_totals = {
-        "capture": 0.0,
-        "preprocess": 0.0,
-        "inference": 0.0,
-        "postprocess": 0.0,
-        "display": 0.0,
-        "pipeline": 0.0,
-    }
-
-    def elapsed_ms(start: float) -> float:
-        return (time.perf_counter() - start) * 1000
-
+        raise RuntimeError("Could not open webcam")
+ 
     try:
-        while True:
-            # Measure the entire iteration
-            pipeline_start = time.perf_counter()
+        while True: 
 
-            # 1. Capture
-            start = time.perf_counter()
             ret, frame = cap.read()
-            capture_ms = elapsed_ms(start)
 
             if not ret:
-                print("Failed to read webcam frame.")
+                print("Could not read frame")
+
+            # print ret and shape of frame cap.
+            # print(ret)
+            # print(frame.shape)
+
+            # preprocessing 
+            model_input, frame_w, frame_h = preprocess(frame)  # return image, frame_h, frame_w
+            # print("After preprocess")
+            # print(model_input)
+            # print(model_input.shape)
+            # print(model_input.dtype)
+
+            # Inference 
+
+            output = session.run( 
+                [output_name], 
+                {input_name: model_input},
+            )
+
+            pred = output[0]
+            # print(pred.shape)
+
+            # Post-Process
+            boxes, confidences, class_ids = postprocess(pred, (frame_w, frame_h))
+
+            for idx in range(len(boxes)):
+              x1, y1, x2, y2 = boxes[idx][0], boxes[idx][1], boxes[idx][2], boxes[idx][3]
+              confidence = confidences[idx]
+              label = class_ids[idx]
+
+              cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+              cv2.putText(
+                  frame, 
+                  f"Confidence: {confidence}", 
+                  (x1, y1-10), 
+                  cv2.FONT_HERSHEY_SIMPLEX, 
+                  0.6, 
+                  (0, 255, 0),
+                  2
+              )
+
+              cv2.putText(
+                  frame, 
+                  f"Label: {label}", 
+                  (x1, y1-30), 
+                  cv2.FONT_HERSHEY_SIMPLEX, 
+                  0.6, 
+                  (0,255,0),
+                  2
+              )
+
+              cv2.imshow("YOLO WEBCAM", frame)
+
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
-
-            # 2. Preprocessing
-            start = time.perf_counter()
-            model_input = preprocess_frame(frame)
-            preprocess_ms = elapsed_ms(start)
-
-            # 3. Inference
-            start = time.perf_counter()
-            prediction = engine.predict(model_input)
-            inference_ms = elapsed_ms(start)
-
-            # 4. Postprocessing
-            start = time.perf_counter()
-            predicted_class = int(np.argmax(prediction, axis=1)[0])
-            postprocess_ms = elapsed_ms(start)
-
-            # 5. Display and event handling
-            start = time.perf_counter()
-
-            if SHOW_DISPLAY:
-                cv2.putText(
-                    frame,
-                    f"Class: {predicted_class}",
-                    (20, 35),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (0, 255, 0),
-                    2,
-                )
-
-                cv2.putText(
-                    frame,
-                    f"Inference: {inference_ms:.2f} ms",
-                    (20, 70),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 255, 0),
-                    2,
-                )
-
-                cv2.imshow(WINDOW_NAME, frame)
-                key = cv2.waitKey(1) & 0xFF
-            else:
-              key = -1
-
-            display_ms = elapsed_ms(start)
-
-            # End-to-end time for this measured iteration
-            pipeline_ms = elapsed_ms(pipeline_start)
-
-            stage_totals["capture"] += capture_ms
-            stage_totals["preprocess"] += preprocess_ms
-            stage_totals["inference"] += inference_ms
-            stage_totals["postprocess"] += postprocess_ms
-            stage_totals["display"] += display_ms
-            stage_totals["pipeline"] += pipeline_ms
-
-            counter += 1
-
-            if counter % window_size == 0:
-                print(f"\n--- Last {window_size} frames ---")
-
-                for stage in (
-                    "capture",
-                    "preprocess",
-                    "inference",
-                    "postprocess",
-                    "display",
-                    "pipeline",
-                ):
-                    avg_ms = stage_totals[stage] / window_size
-                    print(f"{stage:12s}: {avg_ms:.3f} ms/frame")
-
-                avg_pipeline_ms = (
-                    stage_totals["pipeline"] / window_size
-                )
-                pipeline_fps = 1000.0 / avg_pipeline_ms
-
-                print(f"Pipeline FPS: {pipeline_fps:.2f}")
-
-                # Start a fresh measurement window
-                for stage in stage_totals:
-                    stage_totals[stage] = 0.0
-
-            if key == ord("q"):
-                break
-
     finally:
         cap.release()
         cv2.destroyAllWindows()
-        print("Webcam resources released.")
 
 
 if __name__ == "__main__":
     main()
+
