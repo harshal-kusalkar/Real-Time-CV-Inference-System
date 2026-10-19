@@ -7,8 +7,8 @@ MODEL_PATH = PROJECT_ROOT / "models" / "simple_cnn_legacy.onnx"
 
 # Model Input Configuration
 
-INPUT_WIDTH = 224 
-INPUT_HEIGHT = 224 
+INPUT_WIDTH = 640
+INPUT_HEIGHT = 640
 INPUT_CHANNELS = 3
 
 # ONNX Run Time Configuration 
